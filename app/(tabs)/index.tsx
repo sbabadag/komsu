@@ -1,13 +1,17 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
-import { Link, router } from 'expo-router';
+import { createStackNavigator } from '@react-navigation/stack';
+import LoginScreen from '../LoginScreen';
+import TabsLayout from './_layout';
 
-const HomePage = () => {
-    return (
-        <View>
-            <Text>User Page</Text>
-        </View>
-    );
+const Stack = createStackNavigator();
+
+const App = () => {
+  return (
+    <Stack.Navigator initialRouteName="Login">
+      <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Main" component={TabsLayout} options={{ headerShown: false }} />
+    </Stack.Navigator>
+  );
 };
 
-export default HomePage;
+export default App;
