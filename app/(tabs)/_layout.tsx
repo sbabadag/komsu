@@ -16,22 +16,32 @@ const TabsLayout = () => {
         }}
       />
       <Tabs.Screen
-        name="users/[id]"
-        options={{
-          headerTitle: 'User Page',
-          title: 'User',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="Products"
         options={{
           headerTitle: 'Products',
           title: 'Products',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="pricetag-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="NewProduct"
+        options={{
+          headerTitle: 'Add New Product',
+          title: 'New Product',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="add-circle-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="users/[id]"
+        options={{
+          headerTitle: 'User Page',
+          title: 'User',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" color={color} size={size} />
           ),
         }}
       />

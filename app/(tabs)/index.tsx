@@ -2,6 +2,7 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from '../LoginScreen';
 import TabsLayout from './_layout';
+import NewProduct from './NewProduct'; // Ensure the file exists at this path
 
 const Stack = createStackNavigator();
 

@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getDatabase } from 'firebase/database';
 
 // Firebase configuration object
 const firebaseConfig = {
@@ -19,4 +20,6 @@ if (!getApps().length) {
 }
 
 const auth = getAuth();
-export { auth };
+const database = getDatabase();
+
+export { auth, database };
