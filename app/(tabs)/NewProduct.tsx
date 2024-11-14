@@ -1,108 +1,194 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  StyleSheet,
+  Image,
+  FlatList,
+  TouchableOpacity,
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
-import { ref, push } from 'firebase/database';
+import { getAuth } from 'firebase/auth';
+import { ref, push, onValue, get, remove } from 'firebase/database';
 import { database } from '../../firebaseConfig';
 
 const NewProduct = () => {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [image, setImage] = useState<string | null>(null);
-    const navigation = useNavigation();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [images, setImages] = useState<string[]>([]);
+  const [userProducts, setUserProducts] = useState<any[]>([]);
+  const navigation = useNavigation();
+  const auth = getAuth();
+  const userId = auth.currentUser?.uid;
 
-    const handleAddProduct = async () => {
-        const newProduct = { name, description, image };
-        try {
-            await push(ref(database, 'products'), newProduct);
-            console.log('Product added:', newProduct);
-            navigation.goBack();
-        } catch (error) {
-            console.error('Error adding product:', error);
-        }
-    };
+  const handleAddProduct = async () => {
+    if (!userId) {
+      alert('User not logged in');
+      return;
+    }
 
-    const pickImage = async () => {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const newProduct = { name, description, images };
+    try {
+      await push(ref(database, `users/${userId}/products`), newProduct);
+      console.log('Product added:', newProduct);
+      setName('');
+      setDescription('');
+      setImages([]);
+    } catch (error) {
+      console.error('Error adding product:', error);
+    }
+  };
 
-        if (permissionResult.granted === false) {
-            alert('Permission to access camera roll is required!');
-            return;
-        }
+  const pickImages = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 1,
-        });
+    if (permissionResult.granted === false) {
+      alert('Permission to access camera roll is required!');
+      return;
+    }
 
-        if (!result.canceled) {
-            setImage(result.assets[0].uri);
-        }
-    };
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
 
-    return (
-        <View style={styles.container}>
-            <Text style={styles.label}>Product Name</Text>
-            <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="Enter product name"
-            />
-            <Text style={styles.label}>Description</Text>
-            <TextInput
-                style={styles.input}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Enter product description"
-            />
-            <Text style={styles.label}>Image</Text>
-            <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
-                {image ? (
-                    <Image source={{ uri: image }} style={styles.image} />
-                ) : (
-                    <Text>Select an Image</Text>
-                )}
-            </TouchableOpacity>
-            <Button title="Add Product" onPress={handleAddProduct} />
-        </View>
-    );
+    if (!result.canceled) {
+      const selectedImages = result.assets.map((asset) => asset.uri);
+      setImages(selectedImages);
+    }
+  };
+
+  const handlePublishProduct = async (productId: string) => {
+    if (!userId) return;
+
+    try {
+      const productRef = ref(database, `users/${userId}/products/${productId}`);
+      const snapshot = await get(productRef);
+      const productData = snapshot.val();
+
+      if (productData) {
+        await push(ref(database, 'products'), productData);
+        await remove(productRef);
+        console.log('Product published:', productData);
+      }
+    } catch (error) {
+      console.error('Error publishing product:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const productsRef = ref(database, `users/${userId}/products`);
+    const unsubscribe = onValue(productsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const productsList = Object.keys(data).map((key) => ({
+          id: key,
+          ...data[key],
+        }));
+        setUserProducts(productsList);
+      } else {
+        setUserProducts([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
+
+  const renderProductItem = ({ item }: { item: any }) => (
+    <View style={styles.productCard}>
+      <Text style={styles.productName}>{item.name}</Text>
+      {item.images && item.images.length > 0 && (
+        <FlatList
+          data={item.images}
+          horizontal
+          renderItem={({ item: imageUri }: { item: string }) => (
+            <Image source={{ uri: imageUri }} style={styles.productImage} />
+          )}
+          keyExtractor={(imageUri, index) => index.toString()}
+        />
+      )}
+      <TouchableOpacity
+        style={styles.publishButton}
+        onPress={() => handlePublishProduct(item.id)}
+      >
+        <Text style={styles.publishButtonText}>Publish</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Add New Product</Text>
+      <TextInput
+        placeholder="Product Name"
+        value={name}
+        onChangeText={(text) => setName(text)}
+        style={styles.input}
+      />
+      <TextInput
+        placeholder="Description"
+        value={description}
+        onChangeText={(text) => setDescription(text)}
+        style={styles.input}
+      />
+      <Button title="Pick Images" onPress={pickImages} />
+      {images.length > 0 && (
+        <FlatList
+          data={images}
+          horizontal
+          renderItem={({ item }) => (
+            <Image source={{ uri: item }} style={styles.selectedImage} />
+          )}
+          keyExtractor={(item, index) => index.toString()}
+        />
+      )}
+      <Button title="Add Product" onPress={handleAddProduct} />
+
+      <Text style={styles.subtitle}>Your Products</Text>
+      {userProducts.length > 0 ? (
+        <FlatList
+          data={userProducts}
+          renderItem={renderProductItem}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+        />
+      ) : (
+        <Text>No products added yet.</Text>
+      )}
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        padding: 16,
-        backgroundColor: '#fff'
-    },
-    label: {
-        fontSize: 16,
-        marginBottom: 8
-    },
-    input: {
-        height: 40,
-        borderColor: '#ccc',
-        borderWidth: 1,
-        borderRadius: 8,
-        paddingHorizontal: 8,
-        marginBottom: 16
-    },
-    imagePicker: {
-        height: 200,
-        borderColor: '#ccc',
-        borderWidth: 1,
-        borderRadius: 8,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 16
-    },
-    image: {
-        width: '100%',
-        height: '100%',
-        borderRadius: 8
-    }
+  container: { padding: 16, backgroundColor: '#fff', flex: 1 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
+  subtitle: { fontSize: 20, fontWeight: 'bold', marginVertical: 16 },
+  input: { borderWidth: 1, borderColor: '#ccc', padding: 8, marginBottom: 8 },
+  selectedImage: { width: 100, height: 100, marginRight: 8 },
+  productCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    margin: 4,
+    padding: 8,
+  },
+  productName: { fontSize: 16, fontWeight: 'bold' },
+  productImage: { width: 80, height: 80, marginRight: 4 },
+  publishButton: {
+    backgroundColor: '#28a745',
+    padding: 8,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  publishButtonText: { color: '#fff', fontWeight: 'bold' },
 });
 
 export default NewProduct;

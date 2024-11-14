@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, View, Button, Image, Alert } from "react-native";
+import { Text, View, Image, Alert } from "react-native";
+import { Button } from 'react-native-elements';
+import { StyleSheet } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getAuth, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { auth } from '../firebaseConfig'; // Ensure this file uses Firebase Web SDK
 
 WebBrowser.maybeCompleteAuthSession();
 

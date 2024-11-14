@@ -1,108 +1,145 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, FlatList, Dimensions, TextInput, Button } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Dimensions,
+} from 'react-native';
 import { ref, onValue } from 'firebase/database';
 import { database } from '../../firebaseConfig';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { useNavigation } from '@react-navigation/native';
+
+type RootStackParamList = {
+  ProductDetails: { product: Product };
+};
 
 interface Product {
-    id: string;
-    name: string;
-    description: string;
-    image: string;
+  id: string;
+  name: string;
+  description: string;
+  images: string[];
 }
 
-const ProductItem: React.FC<Product> = ({ name, description, image }) => (
-    <View style={styles.productItem}>
-        <Image source={{ uri: image }} style={styles.productImage} />
-        <Text style={styles.productName}>{name}</Text>
-        <Text style={styles.productDescription}>{description}</Text>
+const Products = () => {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+
+  useEffect(() => {
+    const productsRef = ref(database, 'products');
+    const unsubscribe = onValue(
+      productsRef,
+      (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const productsList = Object.keys(data).map((key) => {
+            const product = data[key];
+
+            // Normalize images to always be an array
+            let images: string[] = [];
+            if (product.images) {
+              if (Array.isArray(product.images)) {
+                images = product.images;
+              } else if (typeof product.images === 'object') {
+                // Firebase might store arrays as objects with numeric keys
+                images = Object.values(product.images);
+              } else if (typeof product.images === 'string') {
+                images = [product.images];
+              }
+            }
+
+            return {
+              id: key,
+              ...product,
+              images,
+            } as Product;
+          });
+          setProducts(productsList);
+        } else {
+          setProducts([]);
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Failed to fetch data: ', error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const renderProductItem = ({ item }: { item: Product }) => (
+    <TouchableOpacity
+      style={styles.productCard}
+      onPress={() => navigation.navigate('ProductDetails', { product: item })}
+    >
+      <Text style={styles.productName}>{item.name}</Text>
+      {item.images.length > 0 ? (
+        <FlatList
+          data={item.images}
+          horizontal
+          renderItem={({ item: imageUri }) => (
+            <Image source={{ uri: imageUri }} style={styles.productImage} />
+          )}
+          keyExtractor={(imageUri, index) => index.toString()}
+        />
+      ) : (
+        <Text style={styles.noImageText}>No Image Available</Text>
+      )}
+      <Text style={styles.productDescription}>{item.description}</Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Available Products</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color="#0000ff" />
+      ) : products.length > 0 ? (
+        <FlatList
+          data={products}
+          renderItem={renderProductItem}
+          keyExtractor={(item) => item.id}
+          numColumns={3} // Set number of columns to 3
+          columnWrapperStyle={styles.columnWrapper} // Add column wrapper style
+        />
+      ) : (
+        <Text>No products available.</Text>
+      )}
     </View>
-);
-
-import { NavigationProp } from '@react-navigation/native';
-
-const Products: React.FC<{ navigation: NavigationProp<any> }> = ({ navigation }) => {
-    const [products, setProducts] = useState<Product[]>([]);
-    const [searchQuery, setSearchQuery] = useState('');
-
-    useEffect(() => {
-        const productsRef = ref(database, 'products');
-        const unsubscribe = onValue(productsRef, (snapshot) => {
-            const data = snapshot.val();
-            const productList = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
-            setProducts(productList);
-        });
-
-        return () => unsubscribe();
-    }, []);
-
-    const filteredProducts = products.filter(product =>
-        product.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    return (
-        <View style={styles.container}>
-            <TextInput
-                style={styles.searchInput}
-                placeholder="Search products..."
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-            />
-            <Button title="Add New Product" onPress={() => navigation.navigate('newProduct')} />
-            <FlatList
-                data={filteredProducts}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                    <ProductItem
-                        id={item.id}
-                        name={item.name}
-                        description={item.description}
-                        image={item.image}
-                    />
-                )}
-                numColumns={3}
-            />
-        </View>
-    );
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        padding: 8,
-        backgroundColor: '#fff'
-    },
-    searchInput: {
-        height: 40,
-        borderColor: '#ccc',
-        borderWidth: 1,
-        borderRadius: 8,
-        paddingHorizontal: 8,
-        marginBottom: 16
-    },
-    productItem: {
-        width: Dimensions.get('window').width / 3 - 16, // Subtracting margin
-        margin: 8,
-        padding: 16,
-        backgroundColor: '#f9f9f9',
-        borderRadius: 8,
-        alignItems: 'center'
-    },
-    productImage: {
-        width: Dimensions.get('window').width / 3 - 32,
-        height: Dimensions.get('window').width / 3 - 32,
-        marginBottom: 8
-    },
-    productName: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 4,
-        textAlign: 'center'
-    },
-    productDescription: {
-        fontSize: 14,
-        color: '#666',
-        textAlign: 'center'
-    }
+  container: { padding: 16, backgroundColor: '#fff', flex: 1 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
+  productCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    margin: 4,
+    padding: 8,
+    borderRadius: 8,
+    maxWidth: Dimensions.get('window').width / 3 - 12, // Adjust max width for 3 columns
+  },
+  productName: { fontSize: 16, fontWeight: 'bold' },
+  productDescription: { marginTop: 8 },
+  noImageText: { color: '#888', marginVertical: 10 },
+  productImage: {
+    width: 100,
+    height: 100,
+    marginRight: 4,
+    borderRadius: 8,
+  },
+  columnWrapper: {
+    justifyContent: 'space-between', // Ensure columns are spaced evenly
+  },
 });
 
 export default Products;
