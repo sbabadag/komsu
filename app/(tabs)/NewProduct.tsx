@@ -12,7 +12,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { getAuth } from 'firebase/auth';
-import { ref, push, onValue, get, remove } from 'firebase/database';
+import { ref, push, onValue, set, get } from 'firebase/database';
 import { database } from '../../firebaseConfig';
 
 const NewProduct = () => {
@@ -20,9 +20,30 @@ const NewProduct = () => {
   const [description, setDescription] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [userProducts, setUserProducts] = useState<any[]>([]);
+  const [publishedProducts, setPublishedProducts] = useState<{ [key: string]: boolean }>({});
   const navigation = useNavigation();
   const auth = getAuth();
   const userId = auth.currentUser?.uid;
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const productsRef = ref(database, `users/${userId}/products`);
+    const unsubscribe = onValue(productsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const productsList = Object.keys(data).map((key) => ({
+          id: key,
+          ...data[key],
+        }));
+        setUserProducts(productsList);
+      } else {
+        setUserProducts([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
 
   const handleAddProduct = async () => {
     if (!userId) {
@@ -39,6 +60,26 @@ const NewProduct = () => {
       setImages([]);
     } catch (error) {
       console.error('Error adding product:', error);
+    }
+  };
+
+  const handlePublishProduct = async (productId: string) => {
+    if (!userId) return;
+
+    try {
+      const productRef = ref(database, `users/${userId}/products/${productId}`);
+      const snapshot = await get(productRef);
+      const productData = snapshot.val();
+
+      if (productData) {
+        // Add product to global products
+        await push(ref(database, 'products'), productData);
+
+        console.log('Product published:', productData);
+        setPublishedProducts((prev) => ({ ...prev, [productId]: true }));
+      }
+    } catch (error) {
+      console.error('Error publishing product:', error);
     }
   };
 
@@ -64,44 +105,6 @@ const NewProduct = () => {
     }
   };
 
-  const handlePublishProduct = async (productId: string) => {
-    if (!userId) return;
-
-    try {
-      const productRef = ref(database, `users/${userId}/products/${productId}`);
-      const snapshot = await get(productRef);
-      const productData = snapshot.val();
-
-      if (productData) {
-        await push(ref(database, 'products'), productData);
-        await remove(productRef);
-        console.log('Product published:', productData);
-      }
-    } catch (error) {
-      console.error('Error publishing product:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (!userId) return;
-
-    const productsRef = ref(database, `users/${userId}/products`);
-    const unsubscribe = onValue(productsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const productsList = Object.keys(data).map((key) => ({
-          id: key,
-          ...data[key],
-        }));
-        setUserProducts(productsList);
-      } else {
-        setUserProducts([]);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [userId]);
-
   const renderProductItem = ({ item }: { item: any }) => (
     <View style={styles.productCard}>
       <Text style={styles.productName}>{item.name}</Text>
@@ -115,11 +118,15 @@ const NewProduct = () => {
           keyExtractor={(imageUri, index) => index.toString()}
         />
       )}
+      <Text style={styles.productDescription}>{item.description}</Text>
       <TouchableOpacity
-        style={styles.publishButton}
+        style={[styles.publishButton, publishedProducts[item.id] && styles.disabledButton]}
         onPress={() => handlePublishProduct(item.id)}
+        disabled={publishedProducts[item.id]}
       >
-        <Text style={styles.publishButtonText}>Publish</Text>
+        <Text style={styles.publishButtonText}>
+          {publishedProducts[item.id] ? 'Published' : 'Publish'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -158,7 +165,7 @@ const NewProduct = () => {
           data={userProducts}
           renderItem={renderProductItem}
           keyExtractor={(item) => item.id}
-          numColumns={2}
+          numColumns={2} // Set number of columns for the grid
         />
       ) : (
         <Text>No products added yet.</Text>
@@ -179,9 +186,11 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     margin: 4,
     padding: 8,
+    borderRadius: 8,
   },
   productName: { fontSize: 16, fontWeight: 'bold' },
-  productImage: { width: 80, height: 80, marginRight: 4 },
+  productDescription: { marginTop: 8 },
+  productImage: { width: 100, height: 100, marginRight: 4, borderRadius: 8 },
   publishButton: {
     backgroundColor: '#28a745',
     padding: 8,
@@ -189,6 +198,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   publishButtonText: { color: '#fff', fontWeight: 'bold' },
+  disabledButton: {
+    backgroundColor: '#ccc',
+  },
 });
 
 export default NewProduct;
