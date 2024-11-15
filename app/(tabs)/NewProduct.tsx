@@ -7,13 +7,21 @@ import {
   StyleSheet,
   Image,
   FlatList,
-  TouchableOpacity,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
-import { getAuth } from 'firebase/auth';
-import { ref, push, onValue, set, get } from 'firebase/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ref, push, onValue, set } from 'firebase/database';
 import { database } from '../../firebaseConfig';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import { firebaseapp } from '../../firebaseConfig'; // Adjust the import path as necessary
+import { getAuth } from 'firebase/auth';
+
+// Initialize Firebase Auth with AsyncStorage persistence
+const auth = getAuth(firebaseapp);
 
 const NewProduct = () => {
   const [name, setName] = useState('');
@@ -21,8 +29,8 @@ const NewProduct = () => {
   const [images, setImages] = useState<string[]>([]);
   const [userProducts, setUserProducts] = useState<any[]>([]);
   const [publishedProducts, setPublishedProducts] = useState<{ [key: string]: boolean }>({});
+  const [loading, setLoading] = useState<boolean>(false);
   const navigation = useNavigation();
-  const auth = getAuth();
   const userId = auth.currentUser?.uid;
 
   useEffect(() => {
@@ -37,169 +45,93 @@ const NewProduct = () => {
           ...data[key],
         }));
         setUserProducts(productsList);
-      } else {
-        setUserProducts([]);
       }
     });
 
     return () => unsubscribe();
   }, [userId]);
 
-  const handleAddProduct = async () => {
-    if (!userId) {
-      alert('User not logged in');
-      return;
-    }
-
-    const newProduct = { name, description, images };
-    try {
-      await push(ref(database, `users/${userId}/products`), newProduct);
-      console.log('Product added:', newProduct);
-      setName('');
-      setDescription('');
-      setImages([]);
-    } catch (error) {
-      console.error('Error adding product:', error);
-    }
-  };
-
-  const handlePublishProduct = async (productId: string) => {
-    if (!userId) return;
-
-    try {
-      const productRef = ref(database, `users/${userId}/products/${productId}`);
-      const snapshot = await get(productRef);
-      const productData = snapshot.val();
-
-      if (productData) {
-        // Add product to global products
-        await push(ref(database, 'products'), productData);
-
-        console.log('Product published:', productData);
-        setPublishedProducts((prev) => ({ ...prev, [productId]: true }));
-      }
-    } catch (error) {
-      console.error('Error publishing product:', error);
-    }
-  };
-
-  const pickImages = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (permissionResult.granted === false) {
-      alert('Permission to access camera roll is required!');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
+  const handleAddImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
     });
 
-    if (!result.canceled) {
-      const selectedImages = result.assets.map((asset) => asset.uri);
-      setImages(selectedImages);
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setImages([...images, result.assets[0].uri]);
     }
   };
 
-  const renderProductItem = ({ item }: { item: any }) => (
-    <View style={styles.productCard}>
-      <Text style={styles.productName}>{item.name}</Text>
-      {item.images && item.images.length > 0 && (
-        <FlatList
-          data={item.images}
-          horizontal
-          renderItem={({ item: imageUri }: { item: string }) => (
-            <Image source={{ uri: imageUri }} style={styles.productImage} />
-          )}
-          keyExtractor={(imageUri, index) => index.toString()}
-        />
-      )}
-      <Text style={styles.productDescription}>{item.description}</Text>
-      <TouchableOpacity
-        style={[styles.publishButton, publishedProducts[item.id] && styles.disabledButton]}
-        onPress={() => handlePublishProduct(item.id)}
-        disabled={publishedProducts[item.id]}
-      >
-        <Text style={styles.publishButtonText}>
-          {publishedProducts[item.id] ? 'Published' : 'Publish'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
+  const handleSaveProduct = () => {
+    if (!userId) return;
+
+    const newProductRef = push(ref(database, `users/${userId}/products`));
+    set(newProductRef, {
+      name,
+      description,
+      images,
+    }).then(() => {
+      console.log('Product saved successfully');
+      navigation.goBack();
+    }).catch((error) => {
+      console.error('Failed to save product: ', error);
+    });
+  };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Add New Product</Text>
       <TextInput
+        style={styles.input}
         placeholder="Product Name"
         value={name}
-        onChangeText={(text) => setName(text)}
-        style={styles.input}
+        onChangeText={setName}
       />
       <TextInput
-        placeholder="Description"
-        value={description}
-        onChangeText={(text) => setDescription(text)}
         style={styles.input}
+        placeholder="Product Description"
+        value={description}
+        onChangeText={setDescription}
       />
-      <Button title="Pick Images" onPress={pickImages} />
-      {images.length > 0 && (
-        <FlatList
-          data={images}
-          horizontal
-          renderItem={({ item }) => (
-            <Image source={{ uri: item }} style={styles.selectedImage} />
-          )}
-          keyExtractor={(item, index) => index.toString()}
-        />
-      )}
-      <Button title="Add Product" onPress={handleAddProduct} />
-
-      <Text style={styles.subtitle}>Your Products</Text>
-      {userProducts.length > 0 ? (
-        <FlatList
-          data={userProducts}
-          renderItem={renderProductItem}
-          keyExtractor={(item) => item.id}
-          numColumns={2} // Set number of columns for the grid
-        />
-      ) : (
-        <Text>No products added yet.</Text>
-      )}
+      <Button title="Add Image" onPress={handleAddImage} />
+      <FlatList
+        data={images}
+        horizontal
+        renderItem={({ item }) => (
+          <Image source={{ uri: item }} style={styles.image} />
+        )}
+        keyExtractor={(item, index) => index.toString()}
+      />
+      <Button title="Save Product" onPress={handleSaveProduct} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { padding: 16, backgroundColor: '#fff', flex: 1 },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
-  subtitle: { fontSize: 20, fontWeight: 'bold', marginVertical: 16 },
-  input: { borderWidth: 1, borderColor: '#ccc', padding: 8, marginBottom: 8 },
-  selectedImage: { width: 100, height: 100, marginRight: 8 },
-  productCard: {
+  container: {
     flex: 1,
-    borderWidth: 1,
+    padding: 16,
+    backgroundColor: '#fff',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  input: {
+    height: 40,
     borderColor: '#ddd',
-    margin: 4,
-    padding: 8,
-    borderRadius: 8,
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingHorizontal: 8,
+    marginBottom: 16,
   },
-  productName: { fontSize: 16, fontWeight: 'bold' },
-  productDescription: { marginTop: 8 },
-  productImage: { width: 100, height: 100, marginRight: 4, borderRadius: 8 },
-  publishButton: {
-    backgroundColor: '#28a745',
-    padding: 8,
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  publishButtonText: { color: '#fff', fontWeight: 'bold' },
-  disabledButton: {
-    backgroundColor: '#ccc',
+  image: {
+    width: 100,
+    height: 100,
+    marginRight: 8,
   },
 });
 

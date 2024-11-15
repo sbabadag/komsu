@@ -21,6 +21,7 @@ import ProductDetails from './ProductDetails';
 
 type RootStackParamList = {
   ProductDetails: { product: Product };
+  BidPage: { product: Product };
 };
 
 export interface Product {
@@ -35,19 +36,11 @@ const Products = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [savedProducts, setSavedProducts] = useState<{ [key: string]: boolean }>({});
-  const [bidAmounts, setBidAmounts] = useState<{ [key: string]: string }>({});
-  const [searchQuery, setSearchQuery] = useState<string>('');
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = () => {
-    setLoading(true);
     const productsRef = ref(database, 'products');
-
-    onValue(
+    const unsubscribe = onValue(
       productsRef,
       (snapshot) => {
         const data = snapshot.val();
@@ -74,15 +67,7 @@ const Products = () => {
               images,
             } as Product;
           });
-
-          // Filter products based on search query
-          const filteredProducts = productsList.filter(
-            (product) =>
-              product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              product.description.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-
-          setProducts(filteredProducts);
+          setProducts(productsList);
         } else {
           setProducts([]);
         }
@@ -93,7 +78,18 @@ const Products = () => {
         setLoading(false);
       }
     );
-  };
+
+    // Fetch saved products for the user
+    const userId = 'user-id'; // Replace with actual user ID
+    const savedProductsRef = ref(database, `savedProducts/${userId}`);
+    get(savedProductsRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        setSavedProducts(snapshot.val());
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleSaveProduct = (product: Product) => {
     const userId = 'user-id'; // Replace with actual user ID
@@ -108,13 +104,8 @@ const Products = () => {
       });
   };
 
-  const handleBidAmountChange = (productId: string, amount: string) => {
-    setBidAmounts((prev) => ({ ...prev, [productId]: amount }));
-  };
-
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
-    fetchProducts();
+  const handleBid = (product: Product) => {
+    navigation.navigate('BidPage', { product });
   };
 
   const renderProductItem = ({ item }: { item: Product }) => (
@@ -146,18 +137,9 @@ const Products = () => {
         )}
         <Text style={styles.productDescription}>{item.description}</Text>
       </TouchableOpacity>
-      <View style={styles.bidContainer}>
-        <TextInput
-          style={styles.bidInput}
-          placeholder="Enter bid amount"
-          keyboardType="numeric"
-          value={bidAmounts[item.id] || ''}
-          onChangeText={(text) => handleBidAmountChange(item.id, text)}
-        />
-        <TouchableOpacity style={styles.bidButton} onPress={() => console.log('Bid button pressed')}>
-          <Text style={styles.bidButtonText}>Bid</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={styles.bidButton} onPress={() => handleBid(item)}>
+        <Text style={styles.bidButtonText}>Bid</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -166,12 +148,6 @@ const Products = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Available Products</Text>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search products..."
-        value={searchQuery}
-        onChangeText={handleSearch}
-      />
       {loading ? (
         <ActivityIndicator size="large" color="#0000ff" />
       ) : products.length > 0 ? (
@@ -206,19 +182,11 @@ const Products = () => {
 const styles = StyleSheet.create({
   container: {
     padding: 16,
-    backgroundColor: '#F4F4F4', // RAL 9003 color
+    backgroundColor: '#fff',
     flex: 1,
     paddingHorizontal: Platform.OS === 'web' ? 32 : 16, // Add more horizontal padding for web
   },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
-  searchInput: {
-    height: 40,
-    borderColor: '#ddd',
-    borderWidth: 1,
-    borderRadius: 5,
-    paddingHorizontal: 8,
-    marginBottom: 16,
-  },
   productCard: {
     flex: 1,
     borderWidth: 1,
@@ -254,25 +222,12 @@ const styles = StyleSheet.create({
   flatListContent: {
     paddingHorizontal: Platform.OS === 'web' ? 32 : 0, // Add more horizontal padding for web
   },
-  bidContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  bidInput: {
-    flex: 1,
-    borderColor: '#ddd',
-    borderWidth: 1,
-    borderRadius: 5,
-    padding: 5,
-    marginRight: 10,
-  },
   bidButton: {
     backgroundColor: '#007bff',
     paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 5,
+    alignSelf: 'center',
   },
   bidButtonText: {
     color: '#fff',
