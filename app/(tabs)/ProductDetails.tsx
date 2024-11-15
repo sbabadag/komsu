@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
 import { Product } from './Products';
+import { FontAwesome } from '@expo/vector-icons';
 
 interface ProductDetailsProps {
   product: Product;
@@ -32,6 +33,9 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({ product, onClose }) => 
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity style={styles.backButton} onPress={onClose}>
+        <FontAwesome name="arrow-left" size={24} color="black" />
+      </TouchableOpacity>
       <ScrollView>
         <Text style={styles.title}>{product.name}</Text>
         {product.images.map((imageUri, index) => (
@@ -59,10 +63,17 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#fff',
   },
+  backButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    zIndex: 1,
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 16,
+    textAlign: 'center',
   },
   image: {
     maxWidth: '80%', // Set max width to 80% of the container
